@@ -1,0 +1,71 @@
+# storage_manager.py
+import os
+import hashlib
+
+
+# TO DO : THREAD SAFETY
+class StorageManager:
+    def __init__(self, filepath, total_length, piece_length, piece_hashes):
+        """
+        :param filepath: Path to the file (from .torrent info['name'])
+        :param total_length: Total file size
+        :param piece_length: Piece size (usually 256 KB or similar)
+        :param piece_hashes: Concatenated SHA-1 hashes (b''.join(...)) of all pieces
+        """
+        self.filepath = filepath
+        self.total_length = total_length
+        self.piece_length = piece_length
+        self.piece_hashes = [piece_hashes[i:i + 20] for i in range(0, len(piece_hashes), 20)]
+        self.num_pieces = len(self.piece_hashes)
+
+        # Ensure the file exists (create if missing)
+        self._prepare_file()
+
+        # Open the file for read/write in binary mode
+        self.file = open(self.filepath, 'r+b')
+
+        # Build bitfield (True for valid pieces, False for missing or invalid)
+        self.bitfield = self._build_bitfield()
+
+    def _prepare_file(self):
+        if not os.path.exists(self.filepath):
+            print(f"[+] Creating empty file: {self.filepath}")
+            with open(self.filepath, 'wb') as f:
+                f.truncate(self.total_length)
+        else:
+            actual_size = os.path.getsize(self.filepath)
+            if actual_size != self.total_length:
+                raise ValueError(f"File size mismatch: expected {self.total_length}, found {actual_size}")
+
+    def _build_bitfield(self):
+        print("[*] Validating file and building bitfield...")
+        bitfield = []
+        with open(self.filepath, 'rb') as f:
+            for i in range(self.num_pieces):
+                f.seek(i * self.piece_length)
+                data = f.read(self.piece_length)
+                expected_hash = self.piece_hashes[i]
+                actual_hash = hashlib.sha1(data).digest()
+                bitfield.append(actual_hash == expected_hash)
+        print(f"[+] Bitfield built: {bitfield.count(True)} / {self.num_pieces} pieces valid.")
+        return bitfield
+
+    def write_block(self, index, begin, data):
+        offset = index * self.piece_length + begin
+        self.file.seek(offset)
+        self.file.write(data)
+
+    def read_block(self, index, begin, length):
+        offset = index * self.piece_length + begin
+        self.file.seek(offset)
+        return self.file.read(length)
+
+    def validate_piece(self, index):
+        self.file.seek(index * self.piece_length)
+        data = self.file.read(self.piece_length)
+        expected_hash = self.piece_hashes[index]
+        actual_hash = hashlib.sha1(data).digest()
+        return actual_hash == expected_hash
+
+    def close(self):
+        self.file.close()
