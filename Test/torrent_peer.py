@@ -5,6 +5,9 @@ import threading
 import hashlib
 import random
 import time
+import urllib.parse
+import urllib.request
+import bencodepy
 
 try:
     import miniupnpc
@@ -35,8 +38,43 @@ class TorrentPeer:
         self.running = True
 
     def announce_to_tracker(self):
-        # To be implemented
-        pass
+        """Announce to the tracker and retrieve a list of peers."""
+        try:
+            params = {
+                'info_hash': self.info_hash,
+                'peer_id': self.peer_id,
+                'port': self.listen_port,
+                'uploaded': 0,
+                'downloaded': 0,
+                'left': self.total_length,
+                'compact': 1,
+                'event': 'started'
+            }
+
+            url = self.tracker_url + '?' + urllib.parse.urlencode({
+                k: (v if isinstance(v, str) else urllib.parse.quote_from_bytes(v))
+                for k, v in params.items()
+            })
+
+            print(f"[*] Announcing to tracker: {url}")
+            with urllib.request.urlopen(url) as response:
+                response_data = response.read()
+                decoded = bencodepy.decode(response_data)
+
+                if b'peers' in decoded:
+                    peers = decoded[b'peers']
+                    if isinstance(peers, bytes):  # compact format
+                        for i in range(0, len(peers), 6):
+                            ip = '.'.join(str(b) for b in peers[i:i + 4])
+                            port = int.from_bytes(peers[i + 4:i + 6], 'big')
+                            print(f"[+] Tracker returned peer: {ip}:{port}")
+                            self.connect_to_peer(ip, port)
+                    else:
+                        print("[!] Non-compact peer format not supported yet.")
+                else:
+                    print("[!] No peers in tracker response.")
+        except Exception as e:
+            print(f"[!] Tracker communication failed: {e}")
 
     def listen_for_incoming_peers(self):
         """Start a listening socket for incoming peer connections."""
