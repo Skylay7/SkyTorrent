@@ -38,25 +38,24 @@ class TorrentPeer:
         self.running = True
 
     def announce_to_tracker(self):
-        """Announce to the tracker and retrieve a list of peers."""
         try:
-            params = {
-                'info_hash': self.info_hash,
-                'peer_id': self.peer_id,
-                'port': self.listen_port,
-                'uploaded': 0,
-                'downloaded': 0,
-                'left': self.total_length,
-                'compact': 1,
-                'event': 'started'
-            }
+            encoded_info_hash = urllib.parse.quote_from_bytes(self.info_hash)
+            encoded_peer_id = urllib.parse.quote_from_bytes(self.peer_id)
 
-            url = self.tracker_url + '?' + urllib.parse.urlencode({
-                k: (v if isinstance(v, str) else urllib.parse.quote_from_bytes(v))
-                for k, v in params.items()
-            })
+            params = (
+                f"info_hash={encoded_info_hash}"
+                f"&peer_id={encoded_peer_id}"
+                f"&port={self.listen_port}"
+                f"&uploaded=0"
+                f"&downloaded=0"
+                f"&left={self.total_length}"
+                f"&compact=1"
+                f"&event=started"
+            )
 
-            print(f"[*] Announcing to tracker: {url}")
+            url = f"{self.tracker_url}?{params}"
+            print(f"[*] Announcing to tracker: {url}", flush=True)
+
             with urllib.request.urlopen(url) as response:
                 response_data = response.read()
                 decoded = bencodepy.decode(response_data)
@@ -67,14 +66,18 @@ class TorrentPeer:
                         for i in range(0, len(peers), 6):
                             ip = '.'.join(str(b) for b in peers[i:i + 4])
                             port = int.from_bytes(peers[i + 4:i + 6], 'big')
-                            print(f"[+] Tracker returned peer: {ip}:{port}")
-                            self.connect_to_peer(ip, port)
+                            print(f"[+] Tracker returned peer: {ip}:{port}", flush=True)
+
+                            sock = self.connect_to_peer(ip, port)
+                            if sock:
+                                threading.Thread(target=self.handle_peer_connection, args=(sock,), daemon=True).start()
                     else:
-                        print("[!] Non-compact peer format not supported yet.")
+                        print("[!] Non-compact peer format not supported yet.", flush=True)
                 else:
-                    print("[!] No peers in tracker response.")
+                    print("[!] No peers in tracker response.", flush=True)
+
         except Exception as e:
-            print(f"[!] Tracker communication failed: {e}")
+            print(f"[!] Tracker communication failed: {e}", flush=True)
 
     def listen_for_incoming_peers(self):
         """Start a listening socket for incoming peer connections."""
@@ -124,14 +127,51 @@ class TorrentPeer:
         return None
 
     def handle_peer_connection(self, conn):
-        """Handle an incoming or outgoing peer connection (placeholder)."""
-        # perform_handshake(conn) should be called here (to be implemented)
-        # exchange bitfield, interested/choke should be handled here (to be implemented)
-        pass
+        try:
+            # Try to read the first 20 bytes
+            conn.settimeout(5)
+            header = conn.recv(20, socket.MSG_PEEK)
+            if not header.startswith(b'\x13BitTorrent protocol'):
+                print(f"[!] Rejected non-BitTorrent connection from {conn.getpeername()}")
+                conn.close()
+                return
+
+            print(f"[*] Valid BitTorrent handshake detected from {conn.getpeername()}")
+            if self.perform_handshake(conn):
+                print(f"[+] Handshake completed with {conn.getpeername()}")
+            else:
+                print(f"[!] Handshake failed with {conn.getpeername()}")
+                conn.close()
+        except Exception as e:
+            print(f"[!] Error handling peer {conn.getpeername()}: {e}")
+            conn.close()
 
     def perform_handshake(self, sock):
-        # To be implemented
-        pass
+        try:
+            pstr = b"BitTorrent protocol"
+            pstrlen = len(pstr)
+            reserved = b'\x00' * 8
+
+            handshake = (
+                    bytes([pstrlen]) +
+                    pstr +
+                    reserved +
+                    self.info_hash +
+                    self.peer_id
+            )
+
+            sock.sendall(handshake)
+            response = sock.recv(68)
+            if len(response) != 68:
+                return False
+
+            their_info_hash = response[28:48]
+            if their_info_hash != self.info_hash:
+                return False
+
+            return True
+        except Exception:
+            return False
 
     def send_interested(self, sock):
         # To be implemented
@@ -148,6 +188,6 @@ class TorrentPeer:
     def start(self):
         """Start the torrent session."""
         threading.Thread(target=self.listen_for_incoming_peers, args=(), daemon=True).start()
-        self.try_upnp_port_forwarding()
-        # announce_to_tracker() should be called here (to be implemented)
+        threading.Thread(target=self.try_upnp_port_forwarding, daemon=True).start()
+        threading.Thread(target=self.announce_to_tracker, daemon=True).start()
         # connect_to_peers() should be called after tracker response (to be implemented)

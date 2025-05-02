@@ -26,23 +26,31 @@ def cleanup_peers():
 @app.route("/announce", methods=["GET"])
 def announce():
     try:
+        print("[*] Incoming /announce request")
+        print(request.args)
+        print(f"[*] /announce from {request.remote_addr}")
+        print(f"    Query: {request.query_string}")
         # Extract required query parameters
-        info_hash = request.args.get('info_hash', type=str)
-        peer_id = request.args.get('peer_id', type=str)
+        import urllib.parse
+
+        info_hash_raw = request.args.get('info_hash')
+        peer_id_raw = request.args.get('peer_id')
         port = request.args.get('port', type=int)
         ip = request.remote_addr
 
-        if not info_hash or not peer_id or not port:
+        if not info_hash_raw or not peer_id_raw or not port:
             return Response("Missing required parameters", status=400)
+
+        info_hash_bytes = urllib.parse.unquote_to_bytes(info_hash_raw)
+        peer_id_bytes = urllib.parse.unquote_to_bytes(peer_id_raw)
 
         # Store peer in tracker
         peer = {
             'ip': ip,
             'port': port,
-            'peer_id': peer_id,
+            'peer_id': peer_id_bytes,
             'last_seen': time.time()
         }
-        info_hash_bytes = info_hash.encode('latin-1')  # Preserve raw bytes
 
         print(peer)
 
@@ -77,4 +85,4 @@ def announce():
 
 if __name__ == "__main__":
     threading.Thread(target=cleanup_peers, daemon=True).start()
-    app.run(host="0.0.0.0", port=6969)
+    app.run(host="0.0.0.0", port=6969, debug=True)

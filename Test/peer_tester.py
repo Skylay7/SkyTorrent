@@ -16,7 +16,7 @@ def generate_dummy_torrent_info():
 
     return {
         'info_hash': info_hash,
-        'announce': 'http://127.0.0.1:8000/announce',  # dummy tracker
+        'announce': 'http://127.0.0.1:6969/announce',  # dummy tracker
         'name': 'dummy_file.txt',
         'piece_length': piece_length,
         'length': len(dummy_data),
@@ -47,7 +47,7 @@ def main():
 
     try:
         while True:
-            time.sleep(5)
+            time.sleep(2)
     except KeyboardInterrupt:
         print("[*] Shutting down TorrentPeer...")
         peer.running = False
