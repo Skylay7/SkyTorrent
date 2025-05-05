@@ -2,6 +2,7 @@ from flask import Flask, request, Response
 import time
 import bencodepy
 import threading
+import urllib.parse
 
 app = Flask(__name__)
 tracker_data = {}  # info_hash → list of peers
@@ -30,19 +31,22 @@ def announce():
         print(request.args)
         print(f"[*] /announce from {request.remote_addr}")
         print(f"    Query: {request.query_string}")
-        # Extract required query parameters
-        import urllib.parse
 
         info_hash_raw = request.args.get('info_hash')
         peer_id_raw = request.args.get('peer_id')
         port = request.args.get('port', type=int)
         ip = request.remote_addr
 
-        if not info_hash_raw or not peer_id_raw or not port:
+        # ✅ Validate required fields
+        if not info_hash_raw or not peer_id_raw or port is None:
             return Response("Missing required parameters", status=400)
 
-        info_hash_bytes = urllib.parse.unquote_to_bytes(info_hash_raw)
-        peer_id_bytes = urllib.parse.unquote_to_bytes(peer_id_raw)
+        # ✅ Decode percent-encoded values back to raw bytes
+        try:
+            info_hash_bytes = urllib.parse.unquote_to_bytes(info_hash_raw)
+            peer_id_bytes = urllib.parse.unquote_to_bytes(peer_id_raw)
+        except Exception as e:
+            return Response(f"Invalid encoding: {e}", status=400)
 
         # Store peer in tracker
         peer = {

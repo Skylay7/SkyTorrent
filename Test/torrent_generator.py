@@ -2,6 +2,7 @@
 import os
 import hashlib
 import bencodepy
+import argparse
 
 PIECE_LEN = 256 * 1024  # 256 KB
 
@@ -34,5 +35,10 @@ def generate_torrent(file_path, tracker_url, out_path):
 
 
 if __name__ == "__main__":
-    # Example:
-    generate_torrent("my_file.txt", "http://localhost:6969/announce", "my_file.torrent")
+    parser = argparse.ArgumentParser(description="Generate a .torrent file from a file.")
+    parser.add_argument("file_path", nargs='?', default="my_file.txt", help="Path to the source file")
+    parser.add_argument("tracker_url", nargs='?', default="http://localhost:6969/announce", help="Tracker URL")
+    parser.add_argument("out_path", nargs='?', default="my_file.torrent", help="Output .torrent file path")
+
+    args = parser.parse_args()
+    generate_torrent(args.file_path, args.tracker_url, args.out_path)

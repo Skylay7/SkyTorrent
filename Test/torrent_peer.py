@@ -66,11 +66,18 @@ class TorrentPeer:
                         for i in range(0, len(peers), 6):
                             ip = '.'.join(str(b) for b in peers[i:i + 4])
                             port = int.from_bytes(peers[i + 4:i + 6], 'big')
+
+                            # ✅ Block self-connection
+                            if ip == '127.0.0.1' and port == self.listen_port:
+                                print(f"[-] Skipping self ({ip}:{port})", flush=True)
+                                continue
+
                             print(f"[+] Tracker returned peer: {ip}:{port}", flush=True)
 
                             sock = self.connect_to_peer(ip, port)
                             if sock:
                                 threading.Thread(target=self.handle_peer_connection, args=(sock,), daemon=True).start()
+
                     else:
                         print("[!] Non-compact peer format not supported yet.", flush=True)
                 else:

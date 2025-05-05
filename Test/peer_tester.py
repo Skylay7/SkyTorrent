@@ -5,6 +5,7 @@ import random
 import hashlib
 from torrent_peer import TorrentPeer
 from storage_manager import StorageManager
+from torrent_parser import parse_torrent_file
 
 
 def generate_dummy_torrent_info():
@@ -25,19 +26,17 @@ def generate_dummy_torrent_info():
 
 
 def main():
-    listen_port = 6881  # You can change this if needed
+    listen_port = 6882
 
-    # Random 20-byte peer_id like BitTorrent clients use
     peer_id = b'-PC0001-' + bytes(f'{random.randint(0, 999999):06}', encoding='utf-8')
 
-    # Generate fake torrent info
-    torrent_info = generate_dummy_torrent_info()
+    # ✅ Use real torrent metadata
+    torrent_info = parse_torrent_file("my_file.torrent")
 
-    # Create a dummy StorageManager
-    storage = StorageManager('dummy_file.txt', torrent_info['length'],
+    # ✅ Use real file name from .torrent
+    storage = StorageManager(torrent_info['name'], torrent_info['length'],
                              torrent_info['piece_length'], torrent_info['pieces'])
 
-    # Create and start the TorrentPeer
     peer = TorrentPeer(peer_id, torrent_info, storage, listen_port=listen_port)
     peer.start()
 
