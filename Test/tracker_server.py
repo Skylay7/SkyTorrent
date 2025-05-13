@@ -28,25 +28,29 @@ def cleanup_peers():
 def announce():
     try:
         print("[*] Incoming /announce request")
-        print(request.args)
         print(f"[*] /announce from {request.remote_addr}")
         print(f"    Query: {request.query_string}")
 
-        info_hash_raw = request.args.get('info_hash')
-        peer_id_raw = request.args.get('peer_id')
-        port = request.args.get('port', type=int)
-        ip = request.remote_addr
+        # ✅ 1. Read raw query bytes and decode safely
+        params = urllib.parse.parse_qsl(request.query_string.decode('ascii'), keep_blank_values=True)
+        query = dict(params)
 
-        # ✅ Validate required fields
-        if not info_hash_raw or not peer_id_raw or port is None:
+        # ✅ 2. Extract parameters (still percent-encoded strings)
+        info_hash_raw = query.get('info_hash', [None])[0]
+        peer_id_raw = query.get('peer_id', [None])[0]
+        port_str = query.get('port', [None])[0]
+
+        if not info_hash_raw or not peer_id_raw or not port_str:
             return Response("Missing required parameters", status=400)
 
-        # ✅ Decode percent-encoded values back to raw bytes
         try:
             info_hash_bytes = urllib.parse.unquote_to_bytes(info_hash_raw)
             peer_id_bytes = urllib.parse.unquote_to_bytes(peer_id_raw)
+            port = int(port_str)
+            ip = request.remote_addr
         except Exception as e:
             return Response(f"Invalid encoding: {e}", status=400)
+        print(f"[#] Clean decoded info_hash: {info_hash_bytes.hex()}")
 
         # Store peer in tracker
         peer = {
@@ -70,11 +74,21 @@ def announce():
         else:
             peers.append(peer)
 
+        print(f"[#] All peers stored for hash {info_hash_bytes.hex()}:")
+        for p in tracker_data[info_hash_bytes]:
+            print(f"   - {p['ip']}:{p['port']} ({p['peer_id'].decode(errors='ignore')})")
+
+        print(f"[#] Current peer requesting: {ip}:{port}")
+
         # Build compact peer list (4 bytes IP + 2 bytes port each)
         compact_peers = b''
         for p in peers:
             ip_parts = [int(part) for part in p['ip'].split('.')]
             compact_peers += bytes(ip_parts) + p['port'].to_bytes(2, 'big')
+
+        print(f"[#] Peers that will be returned to {ip}:{port}:")
+        for p in peers:
+            print(f"   - {p['ip']}:{p['port']}")
 
         response = {
             b'interval': PEER_TIMEOUT,
