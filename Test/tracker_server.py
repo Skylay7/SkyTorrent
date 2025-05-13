@@ -29,35 +29,31 @@ def announce():
     try:
         print("[*] Incoming /announce request")
         print(f"[*] /announce from {request.remote_addr}")
-        print(f"    Query: {request.query_string}")
+        print(f"    Query: {request.query_string!r}")
 
-        # ✅ 1. Read raw query bytes and decode safely
-        params = urllib.parse.parse_qsl(request.query_string.decode('ascii'), keep_blank_values=True)
-        query = dict(params)
+        # Step 1: Parse raw query string as bytes → list of (key, value)
+        raw_params = request.query_string.split(b"&")
+        query = {}
+        for param in raw_params:
+            if b"=" in param:
+                k, v = param.split(b"=", 1)
+                query[k] = v
 
-        # ✅ 2. Extract parameters (still percent-encoded strings)
-        info_hash_raw = query.get('info_hash', [None])[0]
-        peer_id_raw = query.get('peer_id', [None])[0]
-        port_str = query.get('port', [None])[0]
+        # Step 2: Decode percent-encoded values safely
+        info_hash_bytes = urllib.parse.unquote_to_bytes(query[b"info_hash"])
+        peer_id_bytes = urllib.parse.unquote_to_bytes(query[b"peer_id"])
+        port = int(query[b"port"].decode("ascii"))
+        ip = request.remote_addr
 
-        if not info_hash_raw or not peer_id_raw or not port_str:
-            return Response("Missing required parameters", status=400)
-
-        try:
-            info_hash_bytes = urllib.parse.unquote_to_bytes(info_hash_raw)
-            peer_id_bytes = urllib.parse.unquote_to_bytes(peer_id_raw)
-            port = int(port_str)
-            ip = request.remote_addr
-        except Exception as e:
-            return Response(f"Invalid encoding: {e}", status=400)
         print(f"[#] Clean decoded info_hash: {info_hash_bytes.hex()}")
+        print(f"[#] Decoded peer_id: {peer_id_bytes}")
+        print(f"[#] Decoded port: {port}")
 
-        # Store peer in tracker
         peer = {
-            'ip': ip,
-            'port': port,
-            'peer_id': peer_id_bytes,
-            'last_seen': time.time()
+            "ip": ip,
+            "port": port,
+            "peer_id": peer_id_bytes,
+            "last_seen": time.time()
         }
 
         print(peer)
@@ -103,4 +99,4 @@ def announce():
 
 if __name__ == "__main__":
     threading.Thread(target=cleanup_peers, daemon=True).start()
-    app.run(host="0.0.0.0", port=6969, debug=True)
+    app.run(host="0.0.0.0", port=6969)
