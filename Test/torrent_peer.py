@@ -76,7 +76,9 @@ class TorrentPeer:
 
                             sock = self.connect_to_peer(ip, port)
                             if sock:
-                                threading.Thread(target=self.handle_peer_connection, args=(sock,), daemon=True).start()
+                                if self.perform_handshake(sock):
+                                    threading.Thread(target=self.handle_peer_connection, args=(sock,),
+                                                     daemon=True).start()
 
                     else:
                         print("[!] Non-compact peer format not supported yet.", flush=True)
@@ -197,4 +199,3 @@ class TorrentPeer:
         threading.Thread(target=self.listen_for_incoming_peers, args=(), daemon=True).start()
         threading.Thread(target=self.try_upnp_port_forwarding, daemon=True).start()
         threading.Thread(target=self.announce_to_tracker, daemon=True).start()
-        # connect_to_peers() should be called after tracker response (to be implemented)
