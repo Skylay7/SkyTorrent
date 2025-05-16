@@ -1,6 +1,7 @@
 # storage_manager.py
 import os
 import hashlib
+import threading
 
 
 # TO DO : THREAD SAFETY
@@ -26,6 +27,9 @@ class StorageManager:
 
         # Build bitfield (True for valid pieces, False for missing or invalid)
         self.bitfield = self._build_bitfield()
+
+        self.requested_pieces = set()
+        self.lock = threading.Lock()
 
     def _prepare_file(self):
         if not os.path.exists(self.filepath):
@@ -66,6 +70,23 @@ class StorageManager:
         expected_hash = self.piece_hashes[index]
         actual_hash = hashlib.sha1(data).digest()
         return actual_hash == expected_hash
+
+    def get_needed_piece(self, peer_bitfield):
+        with self.lock:
+            for index, their_has in enumerate(peer_bitfield):
+                if their_has and not self.bitfield[index] and index not in self.requested_pieces:
+                    self.requested_pieces.add(index)
+                    return index
+        return None  # Nothing useful to request
+
+    def request_piece(self, index):
+        with self.lock:
+            self.requested_pieces.add(index)
+
+    def mark_piece_done(self, index):
+        with self.lock:
+            self.requested_pieces.discard(index)
+            self.bitfield[index] = True
 
     def close(self):
         self.file.close()
