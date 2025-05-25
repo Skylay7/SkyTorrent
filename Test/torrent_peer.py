@@ -37,6 +37,8 @@ class TorrentPeer:
 
         self.connected_peers = []
         self.remote_peer_ids = {}
+        self.sent_interested = set()  # Peers we’ve sent 'interested' to
+        self.choked_peers = set()  # Peers who choked us
         self.running = True
 
     def announce_to_tracker(self):
@@ -165,6 +167,65 @@ class TorrentPeer:
             print(f"[!] Error handling peer {conn.getpeername()}: {e}")
             conn.close()
 
+    def download_loop(self, conn, peer_bitfield):
+        try:
+            sockname = conn.getpeername()
+            peer_id = self.remote_peer_ids.get(conn, b'unknown').decode(errors='ignore')
+
+            # Step 1: Check if peer has anything useful
+            initial_piece = self.storage.get_needed_piece(peer_bitfield)
+            if initial_piece is None:
+                print(f"[=] Peer {sockname} ({peer_id}) has nothing we need. Sending 'not interested' and closing.")
+                msg = (1).to_bytes(4, 'big') + b'\x03'  # ID = 3 = not interested
+                conn.sendall(msg)
+                conn.close()
+                return
+            else:
+                self.storage.release_piece(initial_piece)  # Unlock , only checking if interested
+
+            # Step 2: Send 'interested' once
+            if conn not in self.sent_interested:
+                msg = (1).to_bytes(4, 'big') + b'\x02'  # ID = 2 = interested
+                conn.sendall(msg)
+                self.sent_interested.add(conn)
+                print(f"[→] Sent 'interested' to {sockname}")
+
+            # Step 3: Wait for initial unchoke
+            if conn in self.choked_peers:
+                if not self.wait_for_unchoke(conn):
+                    print(f"[!] Timed out waiting for initial unchoke from {sockname}")
+                    conn.close()
+                    return
+                self.choked_peers.discard(conn)
+
+            # Step 4: Begin request loop
+            while True:
+                # If we've been choked again, wait
+                if conn in self.choked_peers:
+                    print(f"[=] Peer {sockname} choked us. Waiting for unchoke...")
+                    if not self.wait_for_unchoke(conn):
+                        print(f"[!] Timed out waiting for re-unchoke from {sockname}")
+                        break
+                    self.choked_peers.discard(conn)
+
+                piece_index = self.storage.get_needed_piece(peer_bitfield)
+                if piece_index is None:
+                    print(f"[✓] No more pieces to request from {sockname}. Done with this peer.")
+                    break
+
+                try:
+                    self.request_piece(conn, piece_index, 0, 2 ** 14)
+                    self.receive_piece(conn)
+                except Exception as e:
+                    print(f"[!] Failed to download piece {piece_index} from {sockname}: {e}")
+                    self.storage.release_piece(piece_index)
+                    time.sleep(2)
+
+        except Exception as e:
+            print(f"[!] Error in download loop with {conn.getpeername()}: {e}")
+        finally:
+            conn.close()
+
     def receive_handshake(self, sock):
         data = b''
         while len(data) < 68:
@@ -276,30 +337,6 @@ class TorrentPeer:
         )
         msg = len(payload + b'\x06').to_bytes(4, 'big') + b'\x06' + payload
         sock.sendall(msg)
-
-    def download_loop(self, conn, peer_bitfield):
-        try:
-            while True:
-                piece_index = self.storage.get_needed_piece(peer_bitfield)
-                if piece_index is None:
-                    print(f"[=] No pieces to request from {conn.getpeername()}")
-                    time.sleep(2)
-                    continue  # wait and retry
-
-                self.send_interested(conn)
-                if not self.wait_for_unchoke(conn):
-                    print(f"[!] Peer {conn.getpeername()} did not unchoke us")
-                    time.sleep(2)
-                    continue
-
-                # Here starts the re
-
-                self.request_piece(conn, piece_index, 0, 2 ** 14)
-                self.receive_piece(conn)  # should validate & mark it
-
-        except Exception as e:
-            print(f"[!] Error in download loop with {conn.getpeername()}: {e}")
-            conn.close()
 
     @staticmethod
     def wait_for_unchoke(sock, timeout=30):

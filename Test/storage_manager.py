@@ -88,5 +88,9 @@ class StorageManager:
             self.requested_pieces.discard(index)
             self.bitfield[index] = True
 
+    def release_piece(self, index):
+        with self.lock:
+            self.requested_pieces.discard(index)
+
     def close(self):
         self.file.close()
