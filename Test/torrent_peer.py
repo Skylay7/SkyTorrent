@@ -226,6 +226,10 @@ class TorrentPeer:
         finally:
             conn.close()
 
+    def message_listener(self):
+        """One thread that receives the data and sends it to the correct function"""
+        pass
+
     def receive_handshake(self, sock):
         data = b''
         while len(data) < 68:
