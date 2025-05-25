@@ -292,12 +292,55 @@ class TorrentPeer:
                     time.sleep(2)
                     continue
 
+                # Here starts the re
+
                 self.request_piece(conn, piece_index, 0, 2 ** 14)
                 self.receive_piece(conn)  # should validate & mark it
 
         except Exception as e:
             print(f"[!] Error in download loop with {conn.getpeername()}: {e}")
             conn.close()
+
+    @staticmethod
+    def wait_for_unchoke(sock, timeout=30):
+        """
+        Blocks until an 'unchoke' (ID=1) message is received.
+        Returns True if unchoked within timeout, False otherwise.
+        """
+        sock.settimeout(timeout)
+        try:
+            while True:
+                # Read message length
+                length_bytes = sock.recv(4)
+                if len(length_bytes) < 4:
+                    print("[!] Connection closed while waiting for unchoke")
+                    return False
+
+                length = int.from_bytes(length_bytes, 'big')
+
+                if length == 0:
+                    continue  # Keep-alive message, skip
+
+                # Read message ID
+                msg_id = sock.recv(1)
+                if not msg_id:
+                    print("[!] Connection closed (no message ID)")
+                    return False
+
+                if msg_id == b'\x01':
+                    print(f"[✓] Received unchoke from {sock.getpeername()}")
+                    return True
+
+                # Skip rest of the message
+                sock.recv(length - 1)
+
+        except socket.timeout:
+            print(f"[!] Timed out waiting for unchoke from {sock.getpeername()}")
+            return False
+
+        except Exception as e:
+            print(f"[!] Error waiting for unchoke: {e}")
+            return False
 
     def receive_piece(self, sock):
         header = sock.recv(4)
