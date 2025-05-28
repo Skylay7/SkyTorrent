@@ -8,6 +8,7 @@ import time
 import urllib.parse
 import urllib.request
 import bencodepy
+from protocolmessage import ProtocolMessage
 
 try:
     import miniupnpc
@@ -34,9 +35,11 @@ class TorrentPeer:
         self.storage = storage_manager
         self.listen_port = listen_port
         self.backlog = backlog
+        self.BLOCK_SIZE = 2 ** 14  # 16 KB
 
         self.connected_peers = []
         self.remote_peer_ids = {}
+        self.peer_bitfields = {}
         self.sent_interested = set()  # Peers we’ve sent 'interested' to
         self.choked_peers = set()  # Peers who choked us
         self.running = True
@@ -146,6 +149,7 @@ class TorrentPeer:
         return None
 
     def handle_peer_connection(self, conn, is_incoming):
+        sockname = conn.getpeername()
         try:
             if is_incoming:
                 peer_id = self.receive_handshake(conn)
@@ -160,11 +164,12 @@ class TorrentPeer:
                 print(f"[+] Peer handshake established with {conn.getpeername()}")
                 peer_id = self.remote_peer_ids.get(conn)  # optional
                 peer_bitfield = self.receive_bitfield(conn)  # ← Only if outgoing
-                print(peer_bitfield)
-                threading.Thread(target=self.download_loop, args=(conn, peer_bitfield), daemon=True).start()
+                print(f"[→] Bitfield received from {sockname}: {peer_bitfield}")
+                self.peer_bitfields[conn] = peer_bitfield
+                self.download_loop(conn, self.peer_bitfields[conn])
 
         except Exception as e:
-            print(f"[!] Error handling peer {conn.getpeername()}: {e}")
+            print(f"[!] Error handling peer {sockname}: {e}")
             conn.close()
 
     def download_loop(self, conn, peer_bitfield):
@@ -176,8 +181,7 @@ class TorrentPeer:
             initial_piece = self.storage.get_needed_piece(peer_bitfield)
             if initial_piece is None:
                 print(f"[=] Peer {sockname} ({peer_id}) has nothing we need. Sending 'not interested' and closing.")
-                msg = (1).to_bytes(4, 'big') + b'\x03'  # ID = 3 = not interested
-                conn.sendall(msg)
+                conn.sendall(ProtocolMessage.build_not_interested())
                 conn.close()
                 return
             else:
@@ -185,8 +189,7 @@ class TorrentPeer:
 
             # Step 2: Send 'interested' once
             if conn not in self.sent_interested:
-                msg = (1).to_bytes(4, 'big') + b'\x02'  # ID = 2 = interested
-                conn.sendall(msg)
+                conn.sendall(ProtocolMessage.build_interested())
                 self.sent_interested.add(conn)
                 print(f"[→] Sent 'interested' to {sockname}")
 
@@ -214,8 +217,17 @@ class TorrentPeer:
                     break
 
                 try:
-                    self.request_piece(conn, piece_index, 0, 2 ** 14)
-                    self.receive_piece(conn)
+                    for offset in range(0, self.piece_length, self.BLOCK_SIZE):
+                        block_len = min(self.BLOCK_SIZE, self.piece_length - offset)
+                        self.request_piece(conn, piece_index, offset, block_len)
+                        self.receive_and_dispatch(conn)  # Should store the block by offset
+                    """
+                    if success:
+                        self.storage.mark_piece_done(piece_index)
+                        print(f"[↓] Received piece {piece_index} (offset {0}) from {conn.getpeername()}")
+                    else:
+                        self.storage.release_piece(piece_index)
+                    """
                 except Exception as e:
                     print(f"[!] Failed to download piece {piece_index} from {sockname}: {e}")
                     self.storage.release_piece(piece_index)
@@ -226,9 +238,51 @@ class TorrentPeer:
         finally:
             conn.close()
 
-    def message_listener(self):
-        """One thread that receives the data and sends it to the correct function"""
-        pass
+    def receive_and_dispatch(self, sock):
+        try:
+            while True:
+                msg_id, payload = ProtocolMessage.parse_message(sock)
+                if msg_id is None:
+                    print(f"[!] Peer {sock.getpeername()} closed connection.")
+                    return False
+
+                if msg_id == 7:  # piece
+                    self.handle_piece_message(sock, payload)
+                else:
+                    self.handle_peer_message(sock, msg_id, payload)
+
+        except Exception as e:
+            print(f"[!] Error receiving from {sock.getpeername()}: {e}")
+            return False
+
+    def handle_peer_message(self, sock, msg_id, payload):
+        if msg_id == 0:
+            self.choked_peers.add(sock)
+            print(f"[←] Peer {sock.getpeername()} choked us.")
+        elif msg_id == 1:
+            self.choked_peers.discard(sock)
+            print(f"[←] Peer {sock.getpeername()} unchoked us.")
+        elif msg_id == 2:
+            print(f"[←] Peer {sock.getpeername()} sent interested.")
+        elif msg_id == 3:
+            print(f"[←] Peer {sock.getpeername()} not interested.")
+        elif msg_id == 4:
+            piece_index = int.from_bytes(payload, 'big')
+            print(f"[←] Peer {sock.getpeername()} has piece {piece_index}")
+            self.peer_bitfields[sock][piece_index] = True
+        elif msg_id == 5:
+            self.peer_bitfields[sock] = ProtocolMessage.parse_bitfield(payload, self.num_pieces)
+            print(f"[←] Received bitfield from {sock.getpeername()}")
+        else:
+            print(f"[?] Unknown message ID {msg_id} from {sock.getpeername()}")
+
+    def handle_piece_message(self, sock, payload):
+        index = int.from_bytes(payload[0:4], 'big')
+        begin = int.from_bytes(payload[4:8], 'big')
+        block = payload[8:]
+
+        print(f"[↓] Received piece {index} (offset {begin}) from {sock.getpeername()}")
+        self.storage.write_block(index, begin, block)
 
     def receive_handshake(self, sock):
         data = b''
@@ -248,17 +302,11 @@ class TorrentPeer:
         return data[48:]
 
     def send_handshake(self, sock):
-        pstr = b"BitTorrent protocol"
-        reserved = b'\x00' * 8
-        handshake = (
-                bytes([len(pstr)]) + pstr + reserved + self.info_hash + self.peer_id
-        )
-        sock.sendall(handshake)
+        sock.sendall(ProtocolMessage.build_handshake(self.info_hash, self.peer_id))
 
     @staticmethod
     def send_interested(sock):
-        msg = b'\x00\x00\x00\x01' + b'\x02'  # length=1, ID=2 (interested)
-        sock.sendall(msg)
+        sock.sendall(ProtocolMessage.build_interested())
 
     def send_bitfield(self, sock):
         try:
@@ -287,60 +335,28 @@ class TorrentPeer:
         except Exception as e:
             print(f"[!] Failed to send bitfield: {e}")
 
-    @staticmethod
-    def send_have(index, sock):
-        """ To announce a given index piece has been added and able to download"""
-        try:
-            msg = (
-                    (5).to_bytes(4, 'big') +  # length = 5
-                    b'\x04' +  # ID = 4 (have)
-                    index.to_bytes(4, 'big')  # piece index
-            )
-            sock.sendall(msg)
-            print(f"[→] Sent 'have' message for piece {index} to {sock.getpeername()}")
-        except Exception as e:
-            print(f"[!] Failed to send 'have' message to {sock.getpeername()}: {e}")
-
     def receive_bitfield(self, sock):
         try:
-            header = sock.recv(4)
-            length = int.from_bytes(header, 'big')
-            if length == 0:
-                return None
-
-            msg_id = sock.recv(1)
-            if msg_id != b'\x05':  # ID 5 = bitfield
-                return None
-
-            payload = sock.recv(length - 1)
-            return self.parse_bitfield(payload, self.num_pieces)
-
+            msg_id, payload = ProtocolMessage.parse_message(sock)
+            if msg_id == 5:
+                return ProtocolMessage.parse_bitfield(payload, self.num_pieces)
+            return None
         except Exception as e:
             print(f"[!] Error receiving bitfield: {e}")
             return None
 
     @staticmethod
-    def parse_bitfield(bitfield_bytes: bytes, num_pieces: int) -> list[bool]:
-        bitfield = []
-
-        for byte in bitfield_bytes:
-            for i in range(8):
-                # Get each bit from MSB to LSB (left to right)
-                bit = (byte >> (7 - i)) & 1
-                bitfield.append(bool(bit))
-
-        # Trim padding bits at the end
-        return bitfield[:num_pieces]
+    def send_have(index, sock):
+        """ To announce a given index piece has been added and able to download"""
+        try:
+            sock.sendall(ProtocolMessage.build_have(index))
+            print(f"[→] Sent 'have' message for piece {index} to {sock.getpeername()}")
+        except Exception as e:
+            print(f"[!] Failed to send 'have' message to {sock.getpeername()}: {e}")
 
     @staticmethod
     def request_piece(sock, index, begin, length):
-        payload = (
-                index.to_bytes(4, 'big') +
-                begin.to_bytes(4, 'big') +
-                length.to_bytes(4, 'big')
-        )
-        msg = len(payload + b'\x06').to_bytes(4, 'big') + b'\x06' + payload
-        sock.sendall(msg)
+        sock.sendall(ProtocolMessage.build_piece(index, begin, length))
 
     @staticmethod
     def wait_for_unchoke(sock, timeout=30):
@@ -382,26 +398,6 @@ class TorrentPeer:
         except Exception as e:
             print(f"[!] Error waiting for unchoke: {e}")
             return False
-
-    def receive_piece(self, sock):
-        header = sock.recv(4)
-        length = int.from_bytes(header, 'big')
-        if length == 0:
-            return
-        msg_id = sock.recv(1)
-        if msg_id != b'\x07':
-            sock.recv(length - 1)
-            return
-
-        # Read: index (4 bytes), begin (4 bytes), block
-        index = int.from_bytes(sock.recv(4), 'big')
-        begin = int.from_bytes(sock.recv(4), 'big')
-        block = b''
-        while len(block) < (length - 9):
-            block += sock.recv(length - 9 - len(block))
-
-        self.storage.write_block(index, begin, block)
-        print(f"[+] Received block: piece {index}, offset {begin}, {len(block)} bytes")
 
     def start(self):
         """Start the torrent session."""

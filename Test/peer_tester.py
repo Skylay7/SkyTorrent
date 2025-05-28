@@ -3,7 +3,7 @@
 import time
 import random
 import hashlib
-from torrent_peer import TorrentPeer
+from Test.PeerLogic.torrent_peer import TorrentPeer
 from storage_manager import StorageManager
 from torrent_parser import parse_torrent_file
 
