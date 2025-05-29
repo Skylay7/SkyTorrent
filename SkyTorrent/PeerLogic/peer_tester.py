@@ -4,13 +4,13 @@ import time
 import random
 import hashlib
 from Test.PeerLogic.torrent_peer import TorrentPeer
-from storage_manager import StorageManager
-from torrent_parser import parse_torrent_file
+from SkyTorrent.PeerLogic.storage_manager import StorageManager
+from Test.TorrentUtils.torrent_parser import parse_torrent_file
 
 
 def generate_dummy_torrent_info():
     """Create dummy torrent info for testing without real torrent files."""
-    dummy_data = b"Test Data for Torrent"
+    dummy_data = b"SkyTorrent Data for Torrent"
     piece_length = 262144  # 256 KB
     pieces = hashlib.sha1(dummy_data).digest()  # Fake single piece hash
     info_hash = hashlib.sha1(b"dummy_info").digest()

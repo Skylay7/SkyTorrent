@@ -54,8 +54,11 @@ class StorageManager:
         print(f"[+] Bitfield built: {bitfield.count(True)} / {self.num_pieces} pieces valid.")
         return bitfield
 
-    def write_block(self, index, begin, data):
-        offset = index * self.piece_length + begin
+    def write_piece(self, index, data):
+        if len(data) > self.piece_length:
+            raise ValueError(f"Data too large for piece {index} (expected ≤ {self.piece_length}, got {len(data)})")
+
+        offset = index * self.piece_length
         self.file.seek(offset)
         self.file.write(data)
 
