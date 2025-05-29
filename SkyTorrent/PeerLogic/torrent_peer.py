@@ -46,6 +46,12 @@ class TorrentPeer:
         self.choked_peers = set()  # Peers who choked us
         self.running = True
 
+    def start(self):
+        """Start the torrent session."""
+        threading.Thread(target=self.listen_for_incoming_peers, args=(), daemon=True).start()
+        threading.Thread(target=self.try_upnp_port_forwarding, daemon=True).start()
+        threading.Thread(target=self.announce_to_tracker, daemon=True).start()
+
     def announce_to_tracker(self):
         try:
             encoded_info_hash = urllib.parse.quote_from_bytes(self.info_hash)
@@ -180,38 +186,26 @@ class TorrentPeer:
             peer_id = self.remote_peer_ids.get(conn, b'unknown').decode(errors='ignore')
 
             # Step 1: Check if peer has anything useful
-            initial_piece = self.storage.get_needed_piece(peer_bitfield)
-            if initial_piece is None:
-                print(f"[=] Peer {sockname} ({peer_id}) has nothing we need. Sending 'not interested' and closing.")
-                conn.sendall(ProtocolMessage.build_not_interested())
-                conn.close()
+            if not self._should_interested(conn, peer_bitfield, sockname, peer_id):
                 return
-            else:
-                self.storage.release_piece(initial_piece)  # Unlock , only checking if interested
 
             # Step 2: Send 'interested' once
             if conn not in self.sent_interested:
-                conn.sendall(ProtocolMessage.build_interested())
+                self.send_interested(conn)
                 self.sent_interested.add(conn)
                 print(f"[→] Sent 'interested' to {sockname}")
 
             # Step 3: Wait for initial unchoke
             if conn in self.choked_peers:
-                if not self.wait_for_unchoke(conn):
-                    print(f"[!] Timed out waiting for initial unchoke from {sockname}")
-                    conn.close()
+                if not self._wait_until_unchoked(conn, sockname):
                     return
-                self.choked_peers.discard(conn)
 
             # Step 4: Begin request loop
             while True:
                 # If we've been choked again, wait
                 if conn in self.choked_peers:
-                    print(f"[=] Peer {sockname} choked us. Waiting for unchoke...")
-                    if not self.wait_for_unchoke(conn):
-                        print(f"[!] Timed out waiting for re-unchoke from {sockname}")
+                    if not self._wait_until_unchoked(conn, sockname):
                         break
-                    self.choked_peers.discard(conn)
 
                 piece_index = self.storage.get_needed_piece(peer_bitfield)
                 if piece_index is None:
@@ -410,8 +404,22 @@ class TorrentPeer:
             print(f"[!] Error waiting for unchoke: {e}")
             return False
 
-    def start(self):
-        """Start the torrent session."""
-        threading.Thread(target=self.listen_for_incoming_peers, args=(), daemon=True).start()
-        threading.Thread(target=self.try_upnp_port_forwarding, daemon=True).start()
-        threading.Thread(target=self.announce_to_tracker, daemon=True).start()
+    def _should_interested(self, conn, peer_bitfield, sockname, peer_id):
+        initial_piece = self.storage.get_needed_piece(peer_bitfield)
+        if initial_piece is None:
+            print(f"[=] Peer {sockname} ({peer_id}) has nothing we need. Sending 'not interested' and closing.")
+            conn.sendall(ProtocolMessage.build_not_interested())
+            conn.close()
+            return False
+        self.storage.release_piece(initial_piece)
+        return True
+
+    def _wait_until_unchoked(self, conn, sockname):
+        if not self.wait_for_unchoke(conn):
+            print(f"[!] Timed out waiting for unchoke from {sockname}")
+            conn.close()
+            return False
+        self.choked_peers.discard(conn)
+        return True
+
+
