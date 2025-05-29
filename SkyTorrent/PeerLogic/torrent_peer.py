@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 import bencodepy
 from protocolmessage import ProtocolMessage
+from piece import Piece
 
 try:
     import miniupnpc
@@ -37,6 +38,7 @@ class TorrentPeer:
         self.backlog = backlog
         self.BLOCK_SIZE = 2 ** 14  # 16 KB
 
+        self.pending_pieces = {}  # index - Pieces
         self.connected_peers = []
         self.remote_peer_ids = {}
         self.peer_bitfields = {}
@@ -216,18 +218,17 @@ class TorrentPeer:
                     print(f"[✓] No more pieces to request from {sockname}. Done with this peer.")
                     break
 
+                self.pending_pieces[piece_index] = Piece(self.piece_length, self.BLOCK_SIZE)
+
                 try:
                     for offset in range(0, self.piece_length, self.BLOCK_SIZE):
                         block_len = min(self.BLOCK_SIZE, self.piece_length - offset)
                         self.request_piece(conn, piece_index, offset, block_len)
-                        self.receive_and_dispatch(conn)  # Should store the block by offset
-                    """
-                    if success:
-                        self.storage.mark_piece_done(piece_index)
-                        print(f"[↓] Received piece {piece_index} (offset {0}) from {conn.getpeername()}")
-                    else:
-                        self.storage.release_piece(piece_index)
-                    """
+
+                    while not self.pending_pieces[piece_index].is_complete():
+                        if not self.receive_and_dispatch(conn):
+                            raise Exception("Connection dropped or corrupted")
+
                 except Exception as e:
                     print(f"[!] Failed to download piece {piece_index} from {sockname}: {e}")
                     self.storage.release_piece(piece_index)
@@ -247,7 +248,7 @@ class TorrentPeer:
                     return False
 
                 if msg_id == 7:  # piece
-                    self.handle_piece_message(sock, payload)
+                    self.handle_piece_message(payload)
                 else:
                     self.handle_peer_message(sock, msg_id, payload)
 
@@ -276,13 +277,23 @@ class TorrentPeer:
         else:
             print(f"[?] Unknown message ID {msg_id} from {sock.getpeername()}")
 
-    def handle_piece_message(self, sock, payload):
+    def handle_piece_message(self, payload):
         index = int.from_bytes(payload[0:4], 'big')
         begin = int.from_bytes(payload[4:8], 'big')
         block = payload[8:]
 
-        print(f"[↓] Received piece {index} (offset {begin}) from {sock.getpeername()}")
-        self.storage.write_block(index, begin, block)
+        pending = self.pending_pieces[index]
+        pending.store_block(begin, block)
+
+        if pending.is_complete():
+            piece_data = pending.reassemble()
+            if self.storage.validate_piece_data(index, piece_data):
+                self.storage.write_piece(index, piece_data)
+                self.storage.mark_piece_done(index)
+                del self.pending_pieces[index]
+            else:
+                print(f"[✗] Hash mismatch on piece {index}")
+                self.pending_pieces[index] = Piece(self.piece_length, self.BLOCK_SIZE)
 
     def receive_handshake(self, sock):
         data = b''
