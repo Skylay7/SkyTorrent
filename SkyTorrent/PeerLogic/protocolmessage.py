@@ -12,6 +12,14 @@ class ProtocolMessage:
         return (5).to_bytes(4, 'big') + b'\x04' + index.to_bytes(4, 'big')
 
     @staticmethod
+    def build_choke():
+        return (1).to_bytes(4, 'big') + bytes([0])
+
+    @staticmethod
+    def build_unchoke():
+        return (1).to_bytes(4, 'big') + bytes([1])
+
+    @staticmethod
     def build_handshake(info_hash, peer_id):
         pstr = b"BitTorrent protocol"
         reserved = b'\x00' * 8
