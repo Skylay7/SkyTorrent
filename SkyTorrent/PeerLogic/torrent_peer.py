@@ -230,13 +230,7 @@ class TorrentPeer:
                 print(f"[!] Block read failed: index={index}, begin={begin}, length={length}")
                 return
 
-            # Build the piece message
-            payload = (
-                    index.to_bytes(4, 'big') +
-                    begin.to_bytes(4, 'big') +
-                    block
-            )
-            msg = len(payload).to_bytes(4, 'big') + b'\x07' + payload
+            msg = ProtocolMessage.build_response(index, begin, block)
 
             # Send to peer
             sock.sendall(msg)

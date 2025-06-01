@@ -35,6 +35,15 @@ class ProtocolMessage:
         return len(payload + b'\x06').to_bytes(4, 'big') + b'\x06' + payload
 
     @staticmethod
+    def build_response(index, begin, block):
+        payload = (
+                index.to_bytes(4, 'big') +
+                begin.to_bytes(4, 'big') +
+                block
+        )
+        return len(payload).to_bytes(4, 'big') + b'\x07' + payload
+
+    @staticmethod
     def parse_bitfield(bitfield_bytes: bytes, num_pieces: int) -> list[bool]:
         bitfield = []
         for byte in bitfield_bytes:
