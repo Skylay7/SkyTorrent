@@ -39,6 +39,7 @@ class TorrentPeer:
         self.listen_port = listen_port
         self.backlog = backlog
 
+        self.threads = []
         self.pending_pieces = {}  # index - Pieces
         self.connected_peers = []
         self.remote_peer_ids = {}
@@ -50,9 +51,15 @@ class TorrentPeer:
 
     def start(self):
         """Start the torrent session."""
-        threading.Thread(target=self.listen_for_incoming_peers, args=(), daemon=True).start()
-        threading.Thread(target=self.try_upnp_port_forwarding, daemon=True).start()
-        threading.Thread(target=self.announce_to_tracker, daemon=True).start()
+        server_thread = threading.Thread(target=self.listen_for_incoming_peers, args=())
+        upnp_thread = threading.Thread(target=self.try_upnp_port_forwarding)
+        tracker_thread = threading.Thread(target=self.announce_to_tracker)
+        server_thread.start()
+        upnp_thread.start()
+        tracker_thread.start()
+        self.threads.append(server_thread)
+        self.threads.append(upnp_thread)
+        self.threads.append(tracker_thread)
 
     def announce_to_tracker(self):
         try:
@@ -97,8 +104,9 @@ class TorrentPeer:
                                 self.remote_peer_ids[sock] = peer_id  # SKYLAY
                                 if peer_id:
                                     print(f"[+] Handshake completed with {ip}:{port}")
-                                    threading.Thread(target=self.handle_peer_connection, args=(sock, False),
-                                                     daemon=True).start()
+                                    t = threading.Thread(target=self.handle_peer_connection, args=(sock, False))
+                                    t.start()
+                                    self.threads.append(t)
                                 else:
                                     print(f"[!] Handshake failed with {ip}:{port}")
                                     sock.close()
@@ -123,7 +131,9 @@ class TorrentPeer:
                 conn, addr = server_sock.accept()
                 print(f"[+] Accepted connection from {addr}")
                 self.connected_peers.append(conn)
-                threading.Thread(target=self.handle_peer_connection, args=(conn, True), daemon=True).start()
+                t = threading.Thread(target=self.handle_peer_connection, args=(conn, True))
+                t.start()
+                self.threads.append(t)
             except Exception as e:
                 print(f"[!] Error accepting connection: {e}")
 
