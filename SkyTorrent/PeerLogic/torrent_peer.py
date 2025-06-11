@@ -33,7 +33,7 @@ class TorrentPeer:
         self.name = torrent_info['name']
         self.piece_length = torrent_info['piece_length']
         self.total_length = torrent_info['length']
-        self.piece_hashes = torrent_info['pieces']
+        self.piece_hashes = [torrent_info['pieces'][i:i + 20] for i in range(0, len(torrent_info['pieces']), 20)]
         self.num_pieces = len(self.piece_hashes)
         self.storage = storage_manager
         self.listen_port = listen_port
@@ -101,6 +101,7 @@ class TorrentPeer:
                             if sock:
                                 self.send_handshake(sock)
                                 peer_id = self.receive_handshake(sock)
+                                print(f"[+] peer-id - {peer_id}")
                                 self.remote_peer_ids[sock] = peer_id  # SKYLAY
                                 if peer_id:
                                     print(f"[+] Handshake completed with {ip}:{port}")
@@ -172,7 +173,9 @@ class TorrentPeer:
         sockname = conn.getpeername()
         try:
             if is_incoming:
+                print(f"got here :)")
                 peer_id = self.receive_handshake(conn)
+                print(f"[+] peer-id - {peer_id}")
                 if not peer_id:
                     print(f"[!] Invalid handshake from {conn.getpeername()}")
                     conn.close()
@@ -363,12 +366,11 @@ class TorrentPeer:
 
     def receive_handshake(self, sock):
         data = b''
-        while len(data) < 68:
-            chunk = sock.recv(68 - len(data))
+        while len(data) < 62:
+            chunk = sock.recv(62 - len(data))
             if not chunk:
                 return None
             data += chunk
-
         if not data.startswith(b'\x13BitTorrent protocol'):
             return None
 
@@ -388,12 +390,13 @@ class TorrentPeer:
         try:
             # Convert your storage bitfield (list of bools) to a byte array
             bitfield_bool = self.storage.bitfield  # e.g., [True, False, True, ...]
+            print(bitfield_bool)
             bitstring = ''.join(['1' if b else '0' for b in bitfield_bool])
-
             # Pad the bitstring to be a multiple of 8
             while len(bitstring) % 8 != 0:
                 bitstring += '0'
 
+            print(bitstring)
             # Convert to bytes
             bitfield_bytes = bytearray()
             for i in range(0, len(bitstring), 8):
@@ -404,7 +407,7 @@ class TorrentPeer:
             payload = b'\x05' + bitfield_bytes  # ID = 5
             length_prefix = len(payload).to_bytes(4, 'big')
             msg = length_prefix + payload
-
+            print(msg)
             sock.sendall(msg)
             print(f"[→] Sent bitfield to {sock.getpeername()}")
 

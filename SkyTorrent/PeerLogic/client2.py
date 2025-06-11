@@ -8,7 +8,7 @@ import random
 TEST_FILE = "test_file.txt"
 TORRENT_FILE = "test_file.torrent"
 TRACKER_URL = "http://localhost:6969/announce"
-PORT = 6881
+PORT = 6882
 
 if not os.path.exists(TORRENT_FILE):
     generate_torrent(TEST_FILE, TRACKER_URL, TORRENT_FILE)

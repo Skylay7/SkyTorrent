@@ -27,7 +27,6 @@ class StorageManager:
 
         # Build bitfield (True for valid pieces, False for missing or invalid)
         self.bitfield = self._build_bitfield()
-
         self.requested_pieces = set()
         self.lock = threading.Lock()
 
