@@ -5,10 +5,10 @@ from torrent_peer import TorrentPeer
 from storage_manager import StorageManager
 import random
 
-TEST_FILE = "test_file.txt"
-TORRENT_FILE = "test_file.torrent"
+TEST_FILE = "shigaraki.png"
+TORRENT_FILE = "shigaraki.torrent"
 TRACKER_URL = "http://192.168.1.155:6969/announce"
-PORT = 6881
+PORT = 6882
 
 if not os.path.exists(TORRENT_FILE):
     generate_torrent(TEST_FILE, TRACKER_URL, TORRENT_FILE)

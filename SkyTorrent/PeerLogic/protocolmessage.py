@@ -41,7 +41,7 @@ class ProtocolMessage:
                 begin.to_bytes(4, 'big') +
                 block
         )
-        return len(payload).to_bytes(4, 'big') + b'\x07' + payload
+        return len(payload + b'\x07').to_bytes(4, 'big') + b'\x07' + payload
 
     @staticmethod
     def parse_bitfield(bitfield_bytes: bytes, num_pieces: int) -> list[bool]:
@@ -61,5 +61,13 @@ class ProtocolMessage:
         if length == 0:
             return -1, b''
         msg_id = sock.recv(1)
-        payload = sock.recv(length) if length > 1 else b''
+        payload = b''
+        to_read = length - 1
+        while len(payload) < to_read:
+            chunk = sock.recv(to_read - len(payload))
+            if not chunk:
+                return None, None
+            payload += chunk
+
+        print(payload)
         return int.from_bytes(msg_id, 'big'), payload
