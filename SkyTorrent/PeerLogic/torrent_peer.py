@@ -106,7 +106,7 @@ class TorrentPeer:
                                     sock.close()
                                     return
                                 sock = self.secure_socket(sock, is_initiator=True)
-                                print(f"[+] peer-id - {peer_id}")
+                                print(f"[+] Started encryption of conversation")
                                 self.remote_peer_ids[sock] = peer_id  # SKYLAY
                                 if peer_id:
                                     print(f"[+] Handshake completed with {ip}:{port}")
@@ -185,6 +185,7 @@ class TorrentPeer:
                     return
                 self.send_handshake(conn)
                 conn = self.secure_socket(conn, is_initiator=False)
+                print(f"[+] Started encryption of conversation")
                 self.remote_peer_ids[conn] = peer_id
                 self.send_bitfield(conn)
                 self.peer_bitfields[conn] = self.receive_bitfield(conn)
