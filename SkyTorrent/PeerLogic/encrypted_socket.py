@@ -76,5 +76,11 @@ class EncryptedSocket:
     def close(self):
         self.sock.close()
 
+    def getpeername(self):
+        return self.sock.getpeername()
+
+    def settimeout(self, n):
+        self.sock.settimeout(n)
+
     def fileno(self):
         return self.sock.fileno()

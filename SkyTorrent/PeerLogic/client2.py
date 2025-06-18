@@ -1,31 +1,49 @@
-import os
-from torrent_generator import generate_torrent
-from torrent_parser import parse_torrent_file
-from torrent_peer import TorrentPeer
-from storage_manager import StorageManager
-import random
+import socket
+import threading
+from encrypted_socket import EncryptedSocket
 
-TEST_FILE = "test_file.txt"
-TORRENT_FILE = "test_file.torrent"
-TRACKER_URL = "http://localhost:6969/announce"
-PORT = 6882
+HOST = '127.0.0.1'
+PORT = 50007
 
-if not os.path.exists(TORRENT_FILE):
-    generate_torrent(TEST_FILE, TRACKER_URL, TORRENT_FILE)
-    print(f"[✓] .torrent file generated at {TORRENT_FILE}")
 
-if os.path.exists(TORRENT_FILE):
-    parsed_torrent = parse_torrent_file(TORRENT_FILE)
+# ---------- Server ----------
+def start_server():
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.bind((HOST, PORT))
+    server_sock.listen(1)
+    print("[SERVER] Listening...")
 
-torrent_info = parse_torrent_file(TORRENT_FILE)
+    conn, addr = server_sock.accept()
+    print(f"[SERVER] Connected by {addr}")
+    enc_conn = EncryptedSocket(conn)
+    enc_conn.perform_handshake_as_responder()
 
-peer_id = b'-PC0001-' + bytes(f'{random.randint(0, 999999):06}', encoding='utf-8')
+    data = enc_conn.recv(22)
+    print(f"[SERVER] Received (decrypted): {data.decode()}")
 
-storage = StorageManager(torrent_info['name'], torrent_info['length'],
-                         torrent_info['piece_length'], torrent_info['pieces'])
+    enc_conn.send(data)  # echo back
+    enc_conn.close()
+    server_sock.close()
+    print("[SERVER] Closed connection.")
 
-try:
-    peer = TorrentPeer(peer_id, torrent_info, storage, listen_port=PORT)
-    peer.start()
-except Exception as e:
-    print(f"[!] Failed to start TorrentPeer: {e}")
+
+# ---------- Client ----------
+def start_client():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((HOST, PORT))
+    enc_sock = EncryptedSocket(sock)
+    enc_sock.perform_handshake_as_initiator()
+
+    message = "Hello encrypted world!"
+    enc_sock.send(message.encode())
+    print(f"[CLIENT] Sent: {message}")
+
+    response = enc_sock.recv(len(message))
+    print(f"[CLIENT] Received (decrypted): {response.decode()}")
+
+    enc_sock.close()
+
+
+# ---------- Run both ----------
+if __name__ == "__main__":
+    start_client()

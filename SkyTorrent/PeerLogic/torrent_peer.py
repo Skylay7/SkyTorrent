@@ -101,6 +101,11 @@ class TorrentPeer:
                             if sock:
                                 self.send_handshake(sock)
                                 peer_id = self.receive_handshake(sock)
+                                if not peer_id:
+                                    print(f"[!] Invalid handshake from {sock.getpeername()}")
+                                    sock.close()
+                                    return
+                                sock = self.secure_socket(sock, is_initiator=True)
                                 print(f"[+] peer-id - {peer_id}")
                                 self.remote_peer_ids[sock] = peer_id  # SKYLAY
                                 if peer_id:
@@ -179,6 +184,7 @@ class TorrentPeer:
                     conn.close()
                     return
                 self.send_handshake(conn)
+                conn = self.secure_socket(conn, is_initiator=False)
                 self.remote_peer_ids[conn] = peer_id
                 self.send_bitfield(conn)
                 self.peer_bitfields[conn] = self.receive_bitfield(conn)
@@ -247,7 +253,7 @@ class TorrentPeer:
             print(msg)
 
             # Send to peer
-            sock.sendall(msg)
+            sock.send(msg)
             print(f"[→] Sent piece {index} [{begin}:{begin + length}] to {sock.getpeername()}")
 
         except Exception as e:
@@ -386,10 +392,10 @@ class TorrentPeer:
         return data[48:]
 
     def send_handshake(self, sock):
-        sock.sendall(ProtocolMessage.build_handshake(self.info_hash, self.peer_id))
+        sock.send(ProtocolMessage.build_handshake(self.info_hash, self.peer_id))
 
     def send_interested(self, sock):
-        sock.sendall(ProtocolMessage.build_interested())
+        sock.send(ProtocolMessage.build_interested())
 
     def send_bitfield(self, sock):
         try:
@@ -413,7 +419,7 @@ class TorrentPeer:
             length_prefix = len(payload).to_bytes(4, 'big')
             msg = length_prefix + payload
             print(msg)
-            sock.sendall(msg)
+            sock.send(msg)
             print(f"[→] Sent bitfield to {sock.getpeername()}")
 
         except Exception as e:
@@ -432,27 +438,27 @@ class TorrentPeer:
     def send_have(self, index, sock):
         """ To announce a given index piece has been added and able to download"""
         try:
-            sock.sendall(ProtocolMessage.build_have(index))
+            sock.send(ProtocolMessage.build_have(index))
             print(f"[→] Sent 'have' message for piece {index} to {sock.getpeername()}")
         except Exception as e:
             print(f"[!] Failed to send 'have' message to {sock.getpeername()}: {e}")
 
     def send_choke(self, sock):
         try:
-            sock.sendall(ProtocolMessage.build_choke())
+            sock.send(ProtocolMessage.build_choke())
             print(f"[↑] Sent choke to {sock.getpeername()}")
         except Exception as e:
             print(f"[!] Failed to send choke: {e}")
 
     def send_unchoke(self, sock):
         try:
-            sock.sendall(ProtocolMessage.build_unchoke())
+            sock.send(ProtocolMessage.build_unchoke())
             print(f"[↑] Sent unchoke to {sock.getpeername()}")
         except Exception as e:
             print(f"[!] Failed to send unchoke: {e}")
 
     def request_piece(self, sock, index, begin, length):
-        sock.sendall(ProtocolMessage.build_piece(index, begin, length))
+        sock.send(ProtocolMessage.build_piece(index, begin, length))
 
     def wait_for_unchoke(self, sock, timeout=30):
         """
@@ -498,7 +504,7 @@ class TorrentPeer:
         initial_piece = self.storage.get_needed_piece(peer_bitfield)
         if initial_piece is None:
             print(f"[=] Peer {sockname} ({peer_id}) has nothing we need. Sending 'not interested' and closing.")
-            conn.sendall(ProtocolMessage.build_not_interested())
+            conn.send(ProtocolMessage.build_not_interested())
             conn.close()
             return False
         self.storage.release_piece(initial_piece)
@@ -548,6 +554,14 @@ class TorrentPeer:
 
         except Exception as e:
             print(f"[!] Error handling 'have' from {sock.getpeername()}: {e}")
+
+    def secure_socket(self, sock, is_initiator):
+        es = EncryptedSocket(sock)
+        if is_initiator:
+            es.perform_handshake_as_initiator()
+        else:
+            es.perform_handshake_as_responder()
+        return es
 
     def safe_close_peer(self, sock):
         sockname = None

@@ -1,3 +1,6 @@
+from encrypted_socket import EncryptedSocket
+
+
 class ProtocolMessage:
     @staticmethod
     def build_interested():
@@ -57,17 +60,16 @@ class ProtocolMessage:
         header = sock.recv(4)
         if len(header) < 4:
             return None, None
+
         length = int.from_bytes(header, 'big')
         if length == 0:
             return -1, b''
-        msg_id = sock.recv(1)
-        payload = b''
-        to_read = length - 1
-        while len(payload) < to_read:
-            chunk = sock.recv(to_read - len(payload))
-            if not chunk:
-                return None, None
-            payload += chunk
 
-        print(payload)
+        msg_id = sock.recv(1)
+        if len(msg_id) < 1:
+            return None, None
+
+        to_read = length - 1
+        payload = sock.recv(to_read) if to_read > 0 else b''
+
         return int.from_bytes(msg_id, 'big'), payload
