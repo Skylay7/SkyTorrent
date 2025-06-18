@@ -2,13 +2,13 @@
 
 import socket
 import threading
-import random
 import time
 import urllib.parse
 import urllib.request
 import bencodepy
 from protocolmessage import ProtocolMessage
 from piece import Piece
+from encrypted_socket import EncryptedSocket
 
 try:
     import miniupnpc
