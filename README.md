@@ -23,9 +23,11 @@ pip install flask bencodepy pycryptodome miniupnpc
 
 the trakcer will run on the machine you run it on.
 
-python tracker_server.py
+>python tracker_server.py
 
 ### 3. Run client
+
+>python client.py
 
 client.py is the test file. It creates the peer and the torrent file generation or parsing. TORRENT_FILE = "test_file.torrent" is the place you put the path of the torrent file you get or the one you want to generate. 
 if you want to generate a torrent file -> TEST_FILE = "test_file.png" put the path in this value.
