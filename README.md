@@ -2,15 +2,15 @@
 
 ## Files Explenation
 
-tracker_server.py	Flask-based BitTorrent tracker (stores and returns peer lists)
-torrent_generator.py	Creates .torrent files from given input files
-torrent_parser.py	Parses .torrent files to extract metadata and info_hash
-client.py	Entry point for running a peer (Seeder or Leecher)
-torrent_peer.py	Core logic for peer behavior (handshake, download, piece exchange)
-storage_manager.py	Handles file storage, validation, and piece writing
-protocolmessage.py	Manages message parsing, building, and protocol structure
-encrypted_socket.py	Implements Diffie-Hellman + RC4 encryption (BEP-9 hybrid mode)
-piece.py	Helper class for managing piece assembly and completeness checking
+- tracker_server.py	Flask-based BitTorrent tracker (stores and returns peer lists)
+- torrent_generator.py	Creates .torrent files from given input files
+- torrent_parser.py	Parses .torrent files to extract metadata and info_hash
+- client.py	Entry point for running a peer (Seeder or Leecher)
+- torrent_peer.py	Core logic for peer behavior (handshake, download, piece exchange)
+- storage_manager.py	Handles file storage, validation, and piece writing
+- protocolmessage.py	Manages message parsing, building, and protocol structure
+- encrypted_socket.py	Implements Diffie-Hellman + RC4 encryption (BEP-9 hybrid mode)
+- piece.py	Helper class for managing piece assembly and completeness checking
 
 ## How to Run the Project
 
