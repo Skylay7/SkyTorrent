@@ -4,7 +4,7 @@ import time
 import random
 import hashlib
 from Test.PeerLogic.torrent_peer import TorrentPeer
-from SkyTorrent.PeerLogic.storage_manager import StorageManager
+from SkyTorrent.core.storage_manager import StorageManager
 from Test.TorrentUtils.torrent_parser import parse_torrent_file
 
 

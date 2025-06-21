@@ -1,12 +1,12 @@
 import os
-from torrent_generator import generate_torrent
-from torrent_parser import parse_torrent_file
-from torrent_peer import TorrentPeer
-from storage_manager import StorageManager
+from utils.torrent_generator import generate_torrent
+from utils.torrent_parser import parse_torrent_file
+from core.torrent_peer import TorrentPeer
+from core.storage_manager import StorageManager
 import random
 
-TEST_FILE = "shigaraki.png"
-TORRENT_FILE = "shigaraki.torrent"
+TEST_FILE = "files/shigaraki.png"
+TORRENT_FILE = "torrents/shigaraki.torrent"
 TRACKER_URL = "http://192.168.1.155:6969/announce"
 PORT = 6882
 

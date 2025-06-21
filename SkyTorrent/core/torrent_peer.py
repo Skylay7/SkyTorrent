@@ -8,7 +8,7 @@ import urllib.request
 import bencodepy
 from protocolmessage import ProtocolMessage
 from piece import Piece
-from encrypted_socket import EncryptedSocket
+from SkyTorrent.encrypted_socket import EncryptedSocket
 
 try:
     import miniupnpc

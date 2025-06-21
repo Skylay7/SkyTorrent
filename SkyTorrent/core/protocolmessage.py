@@ -1,6 +1,3 @@
-from encrypted_socket import EncryptedSocket
-
-
 class ProtocolMessage:
     @staticmethod
     def build_interested():
