@@ -1,0 +1,9 @@
+# requirements.txt
+# Python dependencies for SkyTorrent project
+
+requests
+Flask
+bencodepy
+miniupnpc
+PyQt6
+pycryptodome

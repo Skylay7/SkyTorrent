@@ -17,7 +17,7 @@
 ### 1. Install Requirements
 
 ```bash
-pip install flask bencodepy pycryptodome miniupnpc
+pip install -r requirements.txt
 ```
 ### 2. Start the Tracker
 
