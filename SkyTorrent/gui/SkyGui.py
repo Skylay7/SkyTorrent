@@ -1,12 +1,17 @@
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QHBoxLayout, QStackedWidget, QFileDialog, QLineEdit, QSizePolicy, QMessageBox
+    QHBoxLayout, QStackedWidget, QFileDialog, QLineEdit, QSizePolicy,
+    QMessageBox, QProgressBar
 )
 from PyQt6.QtGui import QPixmap, QFont, QColor, QPalette
 from PyQt6.QtCore import Qt, QTimer
 import os
+import threading
 from SkyTorrent.utils.torrent_generator import generate_torrent
+from SkyTorrent.utils.torrent_parser import parse_torrent_file
+from SkyTorrent.core.torrent_peer import TorrentPeer
+from SkyTorrent.core.storage_manager import StorageManager
 
 class ScrollingBackground(QWidget):
     def __init__(self, image_path):
@@ -162,18 +167,68 @@ class HomeScreen(QWidget):
         self.overlay.resize(self.size())
         super().resizeEvent(event)
 
-
-class PlaceholderScreen(QWidget):
-    def __init__(self, label_text, stacked_widget):
+class DownloadTorrentScreen(QWidget):
+    def __init__(self):
         super().__init__()
-        layout = QVBoxLayout()
-        label = QLabel(label_text)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        back = QPushButton("Back")
-        back.clicked.connect(lambda: stacked_widget.setCurrentIndex(0))
-        layout.addWidget(label)
-        layout.addWidget(back)
-        self.setLayout(layout)
+        self.stacked_widget = None
+
+        self.layout = QVBoxLayout()
+        self.choose_btn = QPushButton("Choose .torrent File")
+        self.choose_btn.clicked.connect(self.load_torrent)
+        self.layout.addWidget(self.choose_btn)
+
+        self.progress = QProgressBar()
+        self.progress.setMinimum(0)
+        self.layout.addWidget(self.progress)
+
+        self.status_label = QLabel("")
+        self.layout.addWidget(self.status_label)
+
+        self.back_btn = QPushButton("Back")
+        self.back_btn.clicked.connect(self.go_back)
+        self.back_btn.setVisible(True)
+        self.layout.addWidget(self.back_btn)
+
+        self.setLayout(self.layout)
+
+    def set_stacked_widget(self, stacked):
+        self.stacked_widget = stacked
+
+    def go_back(self):
+        if self.stacked_widget:
+            self.stacked_widget.setCurrentIndex(0)
+
+    def load_torrent(self):
+        import random
+        self.peer_id_label = QLabel()
+        self.layout.insertWidget(2, self.peer_id_label)
+        peer_id = b'-PC0001-' + bytes(f'{random.randint(0, 999999):06}', encoding='utf-8')
+        self.peer_id_label.setText(f"Peer ID: {peer_id.decode('utf-8')}")
+        path, _ = QFileDialog.getOpenFileName(self, "Open .torrent file", "", "Torrent Files (*.torrent)")
+        if path:
+            try:
+                torrent_info = parse_torrent_file(path)
+                file_path = os.path.join("../files", torrent_info['name'])
+                storage = StorageManager(file_path, torrent_info['length'],
+                                         torrent_info['piece_length'], torrent_info['pieces'])
+                peer = TorrentPeer(peer_id, torrent_info, storage)
+                self.progress.setMaximum(len(storage.bitfield))
+                self.status_label.setText("Downloading...")
+                threading.Thread(target=self.monitor_progress, args=(storage,), daemon=True).start()
+                peer.start()
+            except Exception as e:
+                self.status_label.setText(f"Error: {e}")
+
+    def monitor_progress(self, storage):
+        import time
+        while True:
+            done = storage.bitfield.count(True)
+            self.progress.setValue(done)
+            if done == len(storage.bitfield):
+                self.status_label.setText("Download complete!")
+                self.back_btn.setVisible(True)
+                break
+            time.sleep(1)
 
 
 def main():
@@ -183,7 +238,8 @@ def main():
     home = HomeScreen(stacked)
     generate = GenerateTorrentScreen()
     generate.set_stacked_widget(stacked)
-    download = PlaceholderScreen("Download Torrent File", stacked)
+    download = DownloadTorrentScreen()
+    download.set_stacked_widget(stacked)
 
     stacked.addWidget(home)
     stacked.addWidget(generate)
