@@ -6,8 +6,8 @@ import time
 import urllib.parse
 import urllib.request
 import bencodepy
-from protocolmessage import ProtocolMessage
-from piece import Piece
+from SkyTorrent.core.protocolmessage import ProtocolMessage
+from SkyTorrent.core.piece import Piece
 from SkyTorrent.encrypted_socket import EncryptedSocket
 
 try:
