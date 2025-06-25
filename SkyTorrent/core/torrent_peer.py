@@ -308,6 +308,8 @@ class TorrentPeer:
                 except Exception as e:
                     print(f"[!] Failed to download piece {piece_index} from {sockname}: {e}")
                     self.storage.release_piece(piece_index)
+                    if piece_index in self.pending_pieces:
+                        del self.pending_pieces[piece_index]
                     time.sleep(2)
 
         except Exception as e:

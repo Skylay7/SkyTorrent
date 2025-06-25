@@ -83,6 +83,8 @@ class StorageManager:
                 if their_has and not self.bitfield[index] and index not in self.requested_pieces:
                     self.requested_pieces.add(index)
                     return index
+            print(self.bitfield)
+            print(self.requested_pieces)
         return None  # Nothing useful to request
 
     def request_piece(self, index):
