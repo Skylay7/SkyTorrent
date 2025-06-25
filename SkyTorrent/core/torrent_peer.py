@@ -251,8 +251,6 @@ class TorrentPeer:
 
             msg = ProtocolMessage.build_response(index, begin, block)
 
-            print(msg)
-
             # Send to peer
             sock.send(msg)
             print(f"[→] Sent piece {index} [{begin}:{begin + length}] to {sock.getpeername()}")
