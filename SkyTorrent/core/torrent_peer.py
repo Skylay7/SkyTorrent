@@ -240,6 +240,7 @@ class TorrentPeer:
         except (socket.timeout, Exception) as e:
             print(f"[!] Upload loop terminated: {e}")
             sock.close()
+            return
 
     def respond_to_request(self, sock, index, begin, length):
         try:

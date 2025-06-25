@@ -13,6 +13,7 @@ from SkyTorrent.utils.torrent_parser import parse_torrent_file
 from SkyTorrent.core.torrent_peer import TorrentPeer
 from SkyTorrent.core.storage_manager import StorageManager
 
+
 class ScrollingBackground(QWidget):
     def __init__(self, image_path):
         super().__init__()
@@ -61,6 +62,7 @@ class GenerateTorrentScreen(QWidget):
     def go_back(self):
         if hasattr(self, 'stacked_widget') and self.stacked_widget:
             self.stacked_widget.setCurrentIndex(0)
+
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout()
@@ -166,6 +168,7 @@ class HomeScreen(QWidget):
         self.background.resize(self.size())
         self.overlay.resize(self.size())
         super().resizeEvent(event)
+
 
 class DownloadTorrentScreen(QWidget):
     def __init__(self):
